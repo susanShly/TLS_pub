@@ -1,0 +1,74 @@
+import h5py
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import mglearn
+import scanpy as sc
+
+#获取数据
+#-------获取数据CSV-------
+path1 = 'C:/Users/HUAWEI/Desktop/GSM5924046_frozen_b_1_TLS_annotation.csv'
+data1 = pd.read_csv(path1)
+
+#------获取数据H5----------
+f1 =h5py.File('C:/Users/HUAWEI/Desktop/GSM5924046_frozen_b_1_filtered_feature_bc_matrix.h5','r')
+#gruop
+group1 =  f1["matrix"]
+feature1 = f1["matrix/features"]
+#datasets
+barcodess1 = group1['barcodes'].__array__()
+data_1 = group1['data'].__array__()
+indices1 = group1['indices'].__array__()
+indptr1= group1['indptr'].__array__()
+name_1 = feature1['name'].__array__()
+id_1 = feature1["id"].__array__()
+feature_types1 = feature1["feature_type"].__array__()
+genome1 = feature1['genome'].__array__()
+#------获取shape---------
+#adata = sc.read_10x_h5(
+#  "/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_filtered_feature_bc_matrix.h5",  # mtx 文件目录
+  #  genome=None, gex_only=True)         
+#adata.var_names_make_unique()
+#print(adata)
+
+#数据预处理
+#-------创建字典----------
+L4 = []
+D1 = dict()
+for i in range(1949):
+    key1 = data1['Barcode'][i]
+    L4.append(key1)
+    key1 = str("b"+"'" + key1 +"'")
+    value1 = data1['TLS_2_cat'][i]
+    D1[key1] = value1
+L2 = []
+for k in range(36601):
+    m = str(id_1[k])
+    m = m.replace("b'","")
+    m = m.replace("'","")
+    L2.append(m)
+D2 = {}
+L3 = []
+for j in range(36601):
+    key2 = str(id_1[j])
+    value2 = str(name_1[j])
+    value2 = value2.replace("b'","")
+    value2 = value2.replace("'","")
+    L3.append(value2)
+    D2[key2] = value2
+#-----连接两个数据集,创建输出数据集-------
+L1 = list()
+for j in barcodess1:
+    j = str(j)
+    tls = D1[j]
+    L1.append(tls)
+y_data1 = pd.DataFrame({'TLS_situation':L1})
+#------创建稀疏矩阵,创建输入数据集-------
+from scipy.sparse import csr_matrix
+csr1 = csr_matrix((data_1, indices1, indptr1), shape=(1949,36601)).toarray()
+#from sklearn import preprocessing
+#min_max_scaler = preprocessing.MinMaxScaler()
+#csr1 = min_max_scaler.fit_transform(csr1)
+csr1 = pd.DataFrame(csr1)
+X_data1 = pd.DataFrame(csr1.values.T,columns = L4,index = L2)
+X_data1.to_csv('C:/Users/HUAWEI/Desktop/X_data1.csv')
