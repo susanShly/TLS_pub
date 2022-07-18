@@ -1,0 +1,177 @@
+import h5py
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import mglearn
+import scanpy as sc\
+
+#获取数据
+#-------获取数据CSV-------
+path1 = 'C:/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_TLS_annotation.csv'
+data1 = pd.read_csv(path1)
+help(np)
+#------获取数据H5----------
+f1 =h5py.File('C:/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_filtered_feature_bc_matrix.h5','r')
+#gruop
+group1 =  f1["matrix"]
+feature1 = f1["matrix/features"]
+#datasets
+barcodess1 = group1['barcodes'].__array__()
+data_1 = group1['data'].__array__()
+indices1 = group1['indices'].__array__()
+indptr1= group1['indptr'].__array__()
+name_1 = feature1['name'].__array__()
+id_1 = feature1["id"].__array__()
+feature_types1 = feature1["feature_type"].__array__()
+genome1 = feature1['genome'].__array__()
+#------获取shape---------
+#adata = sc.read_10x_h5(
+#  "/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_filtered_feature_bc_matrix.h5",  # mtx 文件目录
+  #  genome=None, gex_only=True)         
+#adata.var_names_make_unique()
+#print(adata)
+
+
+#数据预处理
+#-------创建字典----------
+D1 = dict()
+for i in range(4510):
+    key1 = data1['Barcode'][i]
+    key1 = str("b"+"'" + key1 +"'")
+    value1 = data1['TLS_2_cat'][i]
+    D1[key1] = value1
+D2 = dict()
+for k in range(17943):
+    key2 = name_1[k]
+    D2[key2] = k
+#-----连接两个数据集,创建输出数据集-------
+L1 = list()
+for j in barcodess1:
+    j = str(j)
+    tls = D1[j]
+    L1.append(tls)
+y_data1 = pd.DataFrame({'TLS_situation':L1})
+#------创建稀疏矩阵,创建输入数据集-------
+from scipy.sparse import csr_matrix
+csr1 = csr_matrix((data_1, indices1, indptr1), shape=(4510, 17943)).toarray()
+X_data1 = pd.DataFrame(csr1)
+
+
+#训练集与测试集
+#随机打乱数据并分为测试样本和训练样本
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(
+    X_data1, y_data1, random_state = 0)
+#random state 指定随机数生成器的种子，test_size默认25%
+#逻辑回归用sklearn实现
+# -------数据标准化--------
+def transformation(Y):#把male,female转化成0,1
+    l=[]
+    n = 0
+    for y in Y.values:
+        if y =='TLS':
+            n = n+1
+            l.append(0)
+        else:
+            l.append(1)
+    print(n)
+    return np.array(l)
+from sklearn.preprocessing import StandardScaler
+stdsc = StandardScaler()
+
+
+# 将训练数据标准化
+X_train_std = stdsc.fit_transform(X_train)
+# 将测试数据标准化
+X_test_std = stdsc.transform(X_test)
+y_train = transformation(y_train)
+y_test = transformation(y_test)
+y_train = y_train.ravel()
+y_test = y_test.ravel()
+
+
+from sklearn.linear_model import LogisticRegression
+lr = LogisticRegression(C = 10)
+lr.fit(X_train_std, y_train)
+from sklearn import metrics
+y_pred= lr.predict(X_train_std)
+y_predprob= lr.predict_proba(X_train_std)[:,1]
+print("Training Accuracy : %.4g" % metrics.accuracy_score(y_train, y_pred))
+print("AUROC Score (Train): %f" % metrics.roc_auc_score(y_train, y_predprob))
+y_pred0= lr.predict(X_test)
+y_predprob0= lr.predict_proba(X_test)[:,1]
+print("Testing Accuracy : %.4g" % metrics.accuracy_score(y_test, y_pred0))
+print("AUROC Score (Test): %f" % metrics.roc_auc_score(y_test, y_predprob0))
+
+#------ROC曲线绘制--------
+
+pred_y = lr.predict(X_train_std)
+#pred_y = 1/(1+np.exp(-(a+b*X_test_std)))
+pred_y = pd.DataFrame(pred_y)
+pred_y=round(pred_y,0).astype(int)
+from sklearn.metrics import roc_curve, auc  ###计算roc和auc
+# Compute ROC curve and ROC area for each class
+fpr,tpr,threshold = roc_curve(y_train, y_predprob) ###计算真正率和假正率
+roc_auc = auc(fpr,tpr) ###计算auc的值
+
+plt.figure()
+lw = 2
+plt.figure(figsize=(10,10),edgecolor = None,frameon= True)
+plt.plot(fpr, tpr, color='r',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc) ###假正率为横坐标，真正率为纵坐标做曲线
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([-0.01, 1.0])
+plt.ylim([0.0, 1.01])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic example')
+plt.legend(loc="lower right")
+plt.show()
+
+#------------Independent Test---------------------
+#-------获取数据CSV-------
+path = 'C:/Users/HUAWEI/Desktop/GSM5924031_ffpe_c_3_TLS_annotation.csv'
+data2 = pd.read_csv(path)
+
+#------获取数据H5----------
+f =h5py.File('C:/Users/HUAWEI/Desktop/GSM5924031_ffpe_c_3_filtered_feature_bc_matrix.h5','r')
+#gruop
+group =  f["matrix"]
+feature = f["matrix/features"]
+#datasets
+barcodess = group['barcodes'].__array__()
+data = group['data'].__array__()
+indices = group['indices'].__array__()
+indptr = group['indptr'].__array__()
+id_ = feature["id"].__array__()
+feature_types = feature["feature_type"].__array__()
+genome = feature['genome'].__array__()
+shape = group['shape'].__array__()
+#------获取shape---------
+#adata = sc.read_10x_h5(
+#  "/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_filtered_feature_bc_matrix.h5",  # mtx 文件目录
+  #  genome=None, gex_only=True)         
+#adata.var_names_make_unique()
+#print(adata)
+#数据预处理
+#-------创建字典----------
+D = dict()
+for i in range(4755):
+    key = data2['Barcode'][i]
+    key = str("b"+"'" + key +"'")
+    value = data2['TLS_2_cat'][i]
+    D[key] = value
+#-----连接两个数据集,创建输出数据集-------
+L = list()
+for j in barcodess:
+    j = str(j)
+    tls = D[j]
+    L.append(tls)
+y_data = pd.DataFrame({'TLS_situation':L})
+#------创建稀疏矩阵,创建输入数据集-------
+from scipy.sparse import csr_matrix
+csr = csr_matrix((data, indices, indptr), shape=(4755, 17943)).toarray()
+X_data = pd.DataFrame(csr)
+X_data_std = stdsc.transform(X_data)
+y_data = transformation(y_data)
+print('Independent Test accuracy:', lr.score(X_data_std, y_data))
