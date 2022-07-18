@@ -1,0 +1,67 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+#获取数据
+#-------获取cell type数据CSV-------
+path1 = 'C:/Users/HUAWEI/Desktop/result.csv'
+data1 = pd.read_csv(path1)
+data1.set_index(['cell_types'], inplace=True)
+sub_data1 = data1.loc['Fibroblasts']
+l_barcodes1 = data1.columns.values.tolist()
+#-------获取position数据----------
+path2 = 'C:/Users/HUAWEI/Desktop/GSM5924046_frozen_b_1_tissue_positions_list.csv'
+data2 = pd.read_csv(path2)
+data2 = data2[['barcodes','X','Y']]
+data2 = pd.DataFrame(data2.values.T,index = ['barcodes','X','Y'])
+l_barcodes2 = data2.loc['barcodes'].tolist()
+data2 = pd.DataFrame(data2.values,columns = data2.loc['barcodes'])
+data2.index = ['barcodes','X','Y']
+D_position = {}
+L_positionX = []
+L_positionY = []
+l_barcodes4 = []
+for i in l_barcodes2:
+    x = data2.loc['X',i]
+    y = data2.loc['Y',i]
+    i = i.replace('-1','')
+    D_position[i] = (x,y)
+    L_positionX.append(x)
+    L_positionY.append(y)
+    l_barcodes4.append(i)
+D_Bcell = {}
+l_barcodes3 = []
+for j in l_barcodes1:
+    bcell = sub_data1.loc[j]
+    j = j.replace('.1','')
+    D_Bcell[j] = bcell
+    l_barcodes3.append(j)
+L_cellvalues = []
+count = 0
+for k in l_barcodes4:
+    if k in l_barcodes3:
+        L_cellvalues.append(D_Bcell[k])
+    else:
+        L_cellvalues.append(0.0)
+results = np.array([L_positionX,L_positionY,L_cellvalues])
+results = pd.DataFrame(results)
+results = pd.DataFrame(results.values,columns = l_barcodes4)
+results.index = ['x','y','Bcell']
+L_cellvalues = np.array(L_cellvalues)
+L_cellvalues = L_cellvalues.reshape(-1, 1)
+from sklearn import preprocessing
+min_max_scaler = preprocessing.MinMaxScaler()
+L_cellvalues = min_max_scaler.fit_transform(L_cellvalues)
+#绘制散点图
+import matplotlib as mpl
+cmp = mpl.colors.ListedColormap(['black','cornflowerblue','lightgreen','yellow','orange','red'])
+norm = mpl.colors.BoundaryNorm([0,0.001,0.02,0.04,0.06,0.08,0.10], cmp.N)
+plt.title("Tumor", fontsize=24)
+plt.xlabel("x_position", fontsize=14)
+plt.ylabel("y_position", fontsize=14)
+plt.axis([-0.1, 78, -0.1, 127])
+
+ #s为点的大小
+plt.scatter(np.array(L_positionX),np.array(L_positionY), c=L_cellvalues, edgecolors='none', cmap=cmp, norm=norm,alpha=0.7)
+#plt.scatter(np.array(L_positionX),np.array(L_positionY), c=L_cellvalues, edgecolors='none', cmap='rainbow')
+plt.show()
