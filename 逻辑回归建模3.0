@@ -1,0 +1,691 @@
+
+import h5py
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import mglearn
+import scanpy as sc
+
+#获取数据
+#-------获取数据CSV-------
+path1 = 'C:/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_TLS_annotation.csv'
+data1 = pd.read_csv(path1)
+
+#------获取数据H5----------
+f1 =h5py.File('C:/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_filtered_feature_bc_matrix.h5','r')
+#gruop
+group1 =  f1["matrix"]
+feature1 = f1["matrix/features"]
+#datasets
+barcodess1 = group1['barcodes'].__array__()
+data_1 = group1['data'].__array__()
+indices1 = group1['indices'].__array__()
+indptr1= group1['indptr'].__array__()
+name_1 = feature1['name'].__array__()
+id_1 = feature1["id"].__array__()
+feature_types1 = feature1["feature_type"].__array__()
+genome1 = feature1['genome'].__array__()
+#------获取shape---------
+#adata = sc.read_10x_h5(
+#  "/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_filtered_feature_bc_matrix.h5",  # mtx 文件目录
+  #  genome=None, gex_only=True)         
+#adata.var_names_make_unique()
+#print(adata)
+
+
+#数据预处理
+#-------创建字典----------
+D1 = dict()
+for i in range(4510):
+    key1 = data1['Barcode'][i]
+    key1 = str("b"+"'" + key1 +"'")
+    value1 = data1['TLS_2_cat'][i]
+    D1[key1] = value1
+L2 = []
+for k in range(17943):
+    L2.append(str(id_1[k]))
+D2 = {}
+for j in range(17943):
+    key2 = str(id_1[j])
+    value2 = str(name_1[j])
+    D2[key2] = value2
+#-----连接两个数据集,创建输出数据集-------
+L1 = list()
+for j in barcodess1:
+    j = str(j)
+    tls = D1[j]
+    L1.append(tls)
+y_data1 = pd.DataFrame({'TLS_situation':L1})
+#------创建稀疏矩阵,创建输入数据集-------
+from scipy.sparse import csr_matrix
+csr1 = csr_matrix((data_1, indices1, indptr1), shape=(4510, 17943)).toarray()
+X_data1 = pd.DataFrame(csr1,columns = L2)
+
+# -------数据标准化--------
+def transformation(Y):#把male,female转化成0,1
+    l=[]
+    n = 0
+    for y in Y.values:
+        if y =='TLS':
+            n = n+1
+            l.append(0)
+        else:
+            l.append(1)
+    print(n)
+    return np.array(l)
+y_data1 = transformation(y_data1)
+y_data1 = y_data1.ravel()
+#正则化曲线
+from sklearn.linear_model import LogisticRegression as LR
+#lrl1 = LR(penalty="l1",solver="liblinear",C=0.5,max_iter=1000)
+#lrl2 = LR(penalty="l2",solver="liblinear",C=0.5,max_iter=1000) #逻辑回归的重要属性coef_，查看每个特征所对应的参数
+#lrl1 = lrl1.fit(X_data1,y_data1)
+#print(lrl1.coef_)
+#(lrl1.coef_ != 0).sum(axis=1)
+#lrl2 = lrl2.fit(X_data1,y_data1)
+#print(lrl2.coef_)
+
+
+
+#from sklearn.metrics import accuracy_score
+#l1 = []
+#l2 = []
+#l1test = []
+#l2test = []
+#for i in np.linspace(0.05,1,19):
+#    lrl1 = LR(penalty="l1",solver="liblinear",C=i,max_iter=1000)
+ #   lrl2 = LR(penalty="l2",solver="liblinear",C=i,max_iter=1000)
+  #  
+   # lrl1 = lrl1.fit(X_train,y_train)
+    #l1.append(accuracy_score(lrl1.predict(X_train),y_train))
+    #l1test.append(accuracy_score(lrl1.predict(X_test),y_test))
+    
+    #lrl2 = lrl2.fit(X_data1,y_data1)
+    #l2.append(accuracy_score(lrl2.predict(X_data1),y_data1))
+    #l2test.append(accuracy_score(lrl2.predict(X_data1),y_data1))
+    
+#graph = [l1,l2,l1test,l2test]
+#color = ["green","red","lightgreen","gray"]
+#label = ["L1","L2","L1test","L2test"]
+ 
+#plt.figure(figsize=(6,6))
+#for i in range(len(graph)):
+ #   plt.plot(np.linspace(0.05,1,19),graph[i],color[i],label=label[i])
+#plt.legend(loc=4) #图例的位置在哪里?4表示，右下角
+#plt.show()
+
+#------嵌入法embedded-------
+from sklearn.model_selection import cross_val_score
+from sklearn.feature_selection import SelectFromModel
+LR_ = LR(solver="liblinear",C=0.5,random_state=420)
+#print(cross_val_score(LR_,X_data1,y_data1,cv=10).mean())
+X_embedded = SelectFromModel(LR_,norm_order=1).fit_transform(X_data1,y_data1)
+#print(cross_val_score(LR_,X_embedded,y_data1,cv=10).mean())
+name = []
+X_embedded = pd.DataFrame(X_embedded)
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(
+    X_embedded, y_data1, random_state = 0)
+LR_.fit(X_train, y_train)
+# 打印训练集精确度
+print('Training accuracy:', LR_.score(X_train, y_train))
+# 打印测试集精确度
+print('Test accuracy:', LR_.score(X_test, y_test))
+
+#------ROC曲线绘制--------
+pred_y = LR_.predict(X_test)
+#pred_y = 1/(1+np.exp(-(a+b*X_test_std)))
+pred_y = pd.DataFrame(pred_y)
+pred_y=round(pred_y,0).astype(int)
+from sklearn.metrics import roc_curve, auc  ###计算roc和auc
+# Compute ROC curve and ROC area for each class
+fpr,tpr,threshold = roc_curve(y_test, pred_y) ###计算真正率和假正率
+roc_auc = auc(fpr,tpr) ###计算auc的值
+
+pred_y0 = LR_.predict(X_train)
+#pred_y = 1/(1+np.exp(-(a+b*X_test_std)))
+pred_y0 = pd.DataFrame(pred_y0)
+pred_y0=round(pred_y0,0).astype(int)
+from sklearn.metrics import roc_curve, auc  ###计算roc和auc
+# Compute ROC curve and ROC area for each class
+fpr0,tpr0,threshold0 = roc_curve(y_train, pred_y0) ###计算真正率和假正率
+roc_auc0 = auc(fpr0,tpr0) ###计算auc的值
+
+plt.figure()
+lw = 2
+plt.figure(figsize=(10,10))
+plt.plot(fpr0, tpr0, color='r',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc0)
+plt.plot(fpr, tpr, color='g',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc) ###假正率为横坐标，真正率为纵坐标做曲线
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([-0.01, 1.0])
+plt.ylim([0.0, 1.01])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic example')
+plt.legend(loc="lower right")
+plt.show()
+
+#比对原始数据和筛选后数据找出筛选出的特征
+X_data1 = pd.DataFrame(X_data1.values.T, index=X_data1.columns, columns=X_data1.index)
+X_embedded = pd.DataFrame(X_embedded.values.T, index=X_embedded.columns, columns=X_embedded.index)     
+X_data0 = np.array(X_data1)
+X_embedded = np.array(X_embedded)
+X_data0 = X_data0.tolist()
+X_embedded = X_embedded.tolist()
+
+L3=[]
+for j in range(5877):
+    for i in range(17943):
+        if X_embedded[j] == X_data0[i]:
+            L3.append(L2[i])
+            break
+L4 = []
+for m in L3:
+    L4.append(D2[m])    
+
+L5 = ["b'MZB1'","b'IGH1'","b'IGHA1'","b'COL1A1'","b'COL1'","b'CXCL12'","b'CD20'",
+      "b'CD19'","b'CD3'","b'CD4'","b'CD8'"]
+L6 = []
+for n in L5:
+    if n in L4:
+        L6.append(n)
+    else:
+        L6.append('NA')
+print(L6)       
+
+#特征重要性评估
+# get importance
+importance = LR_.coef_[0]
+# summarize feature importance
+D4 = {}
+L7 =[]
+for i,v in enumerate(importance):
+    if v < 0:
+        v = -v
+    D4[v] = i
+    L7.append(v)
+L7.sort(reverse = True)
+L8 =[]
+for k in L7:
+    L8.append(D4[k])
+# plot feature importance
+plt.bar([x for x in range(len(importance))], importance)
+plt.show()
+#找出重要的基因
+L3=[]
+for j in L8:
+    for i in range(17943):
+        if X_embedded[j] == X_data0[i]:
+            L3.append(L2[i])
+            break
+L4 = []
+for m in L3:
+    L4.append(D2[m])    
+
+
+
+
+
+#2.01
+import h5py
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import mglearn
+import scanpy as sc
+
+#获取数据
+#-------获取数据CSV-------
+path1 = 'C:/Users/HUAWEI/Desktop/GSM5924031_ffpe_c_3_TLS_annotation.csv'
+data1 = pd.read_csv(path1)
+
+#------获取数据H5----------
+f1 =h5py.File('C:/Users/HUAWEI/Desktop/GSM5924031_ffpe_c_3_filtered_feature_bc_matrix.h5','r')
+#gruop
+group1 =  f1["matrix"]
+feature1 = f1["matrix/features"]
+#datasets
+barcodess1 = group1['barcodes'].__array__()
+data_1 = group1['data'].__array__()
+indices1 = group1['indices'].__array__()
+indptr1= group1['indptr'].__array__()
+name_1 = feature1['name'].__array__()
+id_1 = feature1["id"].__array__()
+feature_types1 = feature1["feature_type"].__array__()
+genome1 = feature1['genome'].__array__()
+#------获取shape---------
+#adata = sc.read_10x_h5(
+#  "/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_filtered_feature_bc_matrix.h5",  # mtx 文件目录
+  #  genome=None, gex_only=True)         
+#adata.var_names_make_unique()
+#print(adata)
+
+#数据预处理
+#-------创建字典----------
+D1 = dict()
+for i in range(4755):
+    key1 = data1['Barcode'][i]
+    key1 = str("b"+"'" + key1 +"'")
+    value1 = data1['TLS_2_cat'][i]
+    D1[key1] = value1
+L2 = []
+for k in range(17943):
+    L2.append(str(id_1[k]))
+D2 = {}
+for j in range(17943):
+    key2 = str(id_1[j])
+    value2 = str(name_1[j])
+    D2[key2] = value2
+#-----连接两个数据集,创建输出数据集-------
+L1 = list()
+for j in barcodess1:
+    j = str(j)
+    tls = D1[j]
+    L1.append(tls)
+y_data1 = pd.DataFrame({'TLS_situation':L1})
+#------创建稀疏矩阵,创建输入数据集-------
+from scipy.sparse import csr_matrix
+csr1 = csr_matrix((data_1, indices1, indptr1), shape=(4755, 17943)).toarray()
+X_data1 = pd.DataFrame(csr1,columns = L2)
+
+# -------数据标准化--------
+def transformation(Y):#把male,female转化成0,1
+    l=[]
+    n = 0
+    for y in Y.values:
+        if y =='TLS':
+            n = n+1
+            l.append(0)
+        else:
+            l.append(1)
+    print(n)
+    return np.array(l)
+y_data1 = transformation(y_data1)
+y_data1 = y_data1.ravel()
+#正则化曲线
+from sklearn.linear_model import LogisticRegression as LR
+#lrl1 = LR(penalty="l1",solver="liblinear",C=0.5,max_iter=1000)
+#lrl2 = LR(penalty="l2",solver="liblinear",C=0.5,max_iter=1000) #逻辑回归的重要属性coef_，查看每个特征所对应的参数
+#lrl1 = lrl1.fit(X_data1,y_data1)
+#print(lrl1.coef_)
+#(lrl1.coef_ != 0).sum(axis=1)
+#lrl2 = lrl2.fit(X_data1,y_data1)
+#print(lrl2.coef_)
+
+
+
+#from sklearn.metrics import accuracy_score
+#l1 = []
+#l2 = []
+#l1test = []
+#l2test = []
+#for i in np.linspace(0.05,1,19):
+#    lrl1 = LR(penalty="l1",solver="liblinear",C=i,max_iter=1000)
+ #   lrl2 = LR(penalty="l2",solver="liblinear",C=i,max_iter=1000)
+  #  
+   # lrl1 = lrl1.fit(X_train,y_train)
+    #l1.append(accuracy_score(lrl1.predict(X_train),y_train))
+    #l1test.append(accuracy_score(lrl1.predict(X_test),y_test))
+    
+    #lrl2 = lrl2.fit(X_data1,y_data1)
+    #l2.append(accuracy_score(lrl2.predict(X_data1),y_data1))
+    #l2test.append(accuracy_score(lrl2.predict(X_data1),y_data1))
+    
+#graph = [l1,l2,l1test,l2test]
+#color = ["green","red","lightgreen","gray"]
+#label = ["L1","L2","L1test","L2test"]
+ 
+#plt.figure(figsize=(6,6))
+#for i in range(len(graph)):
+ #   plt.plot(np.linspace(0.05,1,19),graph[i],color[i],label=label[i])
+#plt.legend(loc=4) #图例的位置在哪里?4表示，右下角
+#plt.show()
+
+#------嵌入法embedded-------
+from sklearn.model_selection import cross_val_score
+from sklearn.feature_selection import SelectFromModel
+LR_ = LR(solver="liblinear",C=0.5,random_state=420)
+#print(cross_val_score(LR_,X_data1,y_data1,cv=10).mean())
+X_embedded = SelectFromModel(LR_,norm_order=1).fit_transform(X_data1,y_data1)
+#print(cross_val_score(LR_,X_embedded,y_data1,cv=10).mean())
+name = []
+X_embedded = pd.DataFrame(X_embedded)
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(
+    X_embedded, y_data1, random_state = 0)
+LR_.fit(X_train, y_train)
+# 打印训练集精确度
+print('Training accuracy:', LR_.score(X_train, y_train))
+# 打印测试集精确度
+print('Test accuracy:', LR_.score(X_test, y_test))
+
+#------ROC曲线绘制--------
+pred_y = LR_.predict(X_test)
+#pred_y = 1/(1+np.exp(-(a+b*X_test_std)))
+pred_y = pd.DataFrame(pred_y)
+pred_y=round(pred_y,0).astype(int)
+from sklearn.metrics import roc_curve, auc  ###计算roc和auc
+# Compute ROC curve and ROC area for each class
+fpr,tpr,threshold = roc_curve(y_test, pred_y) ###计算真正率和假正率
+roc_auc = auc(fpr,tpr) ###计算auc的值
+
+pred_y0 = LR_.predict(X_train)
+#pred_y = 1/(1+np.exp(-(a+b*X_test_std)))
+pred_y0 = pd.DataFrame(pred_y0)
+pred_y0=round(pred_y0,0).astype(int)
+from sklearn.metrics import roc_curve, auc  ###计算roc和auc
+# Compute ROC curve and ROC area for each class
+fpr0,tpr0,threshold0 = roc_curve(y_train, pred_y0) ###计算真正率和假正率
+roc_auc0 = auc(fpr0,tpr0) ###计算auc的值
+
+plt.figure()
+lw = 2
+plt.figure(figsize=(10,10))
+plt.plot(fpr0, tpr0, color='r',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc0)
+plt.plot(fpr, tpr, color='g',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc) ###假正率为横坐标，真正率为纵坐标做曲线
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([-0.01, 1.0])
+plt.ylim([0.0, 1.01])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic example')
+plt.legend(loc="lower right")
+plt.show()
+
+#比对原始数据和筛选后数据找出筛选出的特征
+X_data1 = pd.DataFrame(X_data1.values.T, index=X_data1.columns, columns=X_data1.index)
+X_embedded = pd.DataFrame(X_embedded.values.T, index=X_embedded.columns, columns=X_embedded.index)     
+X_data0 = np.array(X_data1)
+X_embedded = np.array(X_embedded)
+X_data0 = X_data0.tolist()
+X_embedded = X_embedded.tolist()
+
+L13=[]
+for j in range(5849):
+    for i in range(17943):
+        if X_embedded[j] == X_data0[i]:
+            L13.append(L2[i])
+            break
+L14 = []
+for m in L13:
+    L14.append(D2[m])    
+
+L5 = ["b'MZB1'","b'IGH1'","b'IGHA1'","b'COL1A1'","b'COL1'","b'CXCL12'","b'CD20'",
+      "b'CD19'","b'CD3'","b'CD4'","b'CD8'"]
+L6 = []
+for n in L5:
+    if n in L4:
+        L6.append(n)
+    else:
+        L6.append('NA')
+print(L6)       
+
+#特征重要性评估
+# get importance
+importance = LR_.coef_[0]
+# summarize feature importance
+D4 = {}
+L7 =[]
+for i,v in enumerate(importance):
+    if v < 0:
+        v = -v
+    D4[v] = i
+    L7.append(v)
+L7.sort(reverse = True)
+L8 =[]
+for k in L7:
+    L8.append(D4[k])
+# plot feature importance
+plt.bar([x for x in range(len(importance))], importance)
+plt.show()
+#找出重要的基因
+L13=[]
+for j in L8:
+    for i in range(17943):
+        if X_embedded[j] == X_data0[i]:
+            L13.append(L2[i])
+            break
+L14 = []
+for m in L13:
+    L14.append(D2[m])   
+    
+    
+
+#2.02
+import h5py
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import mglearn
+import scanpy as sc
+
+#获取数据
+#-------获取数据CSV-------
+path1 = 'C:/Users/HUAWEI/Desktop/GSM5924032_ffpe_c_4_TLS_annotation.csv'
+data1 = pd.read_csv(path1)
+
+#------获取数据H5----------
+f1 =h5py.File('C:/Users/HUAWEI/Desktop/GSM5924032_ffpe_c_4_filtered_feature_bc_matrix.h5','r')
+#gruop
+group1 =  f1["matrix"]
+feature1 = f1["matrix/features"]
+#datasets
+barcodess1 = group1['barcodes'].__array__()
+data_1 = group1['data'].__array__()
+indices1 = group1['indices'].__array__()
+indptr1= group1['indptr'].__array__()
+name_1 = feature1['name'].__array__()
+id_1 = feature1["id"].__array__()
+feature_types1 = feature1["feature_type"].__array__()
+genome1 = feature1['genome'].__array__()
+#------获取shape---------
+#adata = sc.read_10x_h5(
+#  "/Users/HUAWEI/Desktop/GSM5924030_ffpe_c_2_filtered_feature_bc_matrix.h5",  # mtx 文件目录
+  #  genome=None, gex_only=True)         
+#adata.var_names_make_unique()
+#print(adata)
+
+
+#数据预处理
+#-------创建字典----------
+D1 = dict()
+for i in range(3829):
+    key1 = data1['Barcode'][i]
+    key1 = str("b"+"'" + key1 +"'")
+    value1 = data1['TLS_2_cat'][i]
+    D1[key1] = value1
+L2 = []
+for k in range(17943):
+    L2.append(str(id_1[k]))
+D2 = {}
+for j in range(17943):
+    key2 = str(id_1[j])
+    value2 = str(name_1[j])
+    D2[key2] = value2
+#-----连接两个数据集,创建输出数据集-------
+L1 = list()
+for j in barcodess1:
+    j = str(j)
+    tls = D1[j]
+    L1.append(tls)
+y_data1 = pd.DataFrame({'TLS_situation':L1})
+#------创建稀疏矩阵,创建输入数据集-------
+from scipy.sparse import csr_matrix
+csr1 = csr_matrix((data_1, indices1, indptr1), shape=(3829, 17943)).toarray()
+X_data1 = pd.DataFrame(csr1,columns = L2)
+
+# -------数据标准化--------
+def transformation(Y):#把male,female转化成0,1
+    l=[]
+    n = 0
+    for y in Y.values:
+        if y =='TLS':
+            n = n+1
+            l.append(0)
+        else:
+            l.append(1)
+    print(n)
+    return np.array(l)
+y_data1 = transformation(y_data1)
+y_data1 = y_data1.ravel()
+#正则化曲线
+from sklearn.linear_model import LogisticRegression as LR
+#lrl1 = LR(penalty="l1",solver="liblinear",C=0.5,max_iter=1000)
+#lrl2 = LR(penalty="l2",solver="liblinear",C=0.5,max_iter=1000) #逻辑回归的重要属性coef_，查看每个特征所对应的参数
+#lrl1 = lrl1.fit(X_data1,y_data1)
+#print(lrl1.coef_)
+#(lrl1.coef_ != 0).sum(axis=1)
+#lrl2 = lrl2.fit(X_data1,y_data1)
+#print(lrl2.coef_)
+
+
+
+#from sklearn.metrics import accuracy_score
+#l1 = []
+#l2 = []
+#l1test = []
+#l2test = []
+#for i in np.linspace(0.05,1,19):
+#    lrl1 = LR(penalty="l1",solver="liblinear",C=i,max_iter=1000)
+ #   lrl2 = LR(penalty="l2",solver="liblinear",C=i,max_iter=1000)
+  #  
+   # lrl1 = lrl1.fit(X_train,y_train)
+    #l1.append(accuracy_score(lrl1.predict(X_train),y_train))
+    #l1test.append(accuracy_score(lrl1.predict(X_test),y_test))
+    
+    #lrl2 = lrl2.fit(X_data1,y_data1)
+    #l2.append(accuracy_score(lrl2.predict(X_data1),y_data1))
+    #l2test.append(accuracy_score(lrl2.predict(X_data1),y_data1))
+    
+#graph = [l1,l2,l1test,l2test]
+#color = ["green","red","lightgreen","gray"]
+#label = ["L1","L2","L1test","L2test"]
+ 
+#plt.figure(figsize=(6,6))
+#for i in range(len(graph)):
+ #   plt.plot(np.linspace(0.05,1,19),graph[i],color[i],label=label[i])
+#plt.legend(loc=4) #图例的位置在哪里?4表示，右下角
+#plt.show()
+
+#------嵌入法embedded-------
+from sklearn.model_selection import cross_val_score
+from sklearn.feature_selection import SelectFromModel
+LR_ = LR(solver="liblinear",C=0.5,random_state=420)
+#print(cross_val_score(LR_,X_data1,y_data1,cv=10).mean())
+X_embedded = SelectFromModel(LR_,norm_order=1).fit_transform(X_data1,y_data1)
+#print(cross_val_score(LR_,X_embedded,y_data1,cv=10).mean())
+name = []
+X_embedded = pd.DataFrame(X_embedded)
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(
+    X_embedded, y_data1, random_state = 0)
+LR_.fit(X_train, y_train)
+# 打印训练集精确度
+print('Training accuracy:', LR_.score(X_train, y_train))
+# 打印测试集精确度
+print('Test accuracy:', LR_.score(X_test, y_test))
+
+#------ROC曲线绘制--------
+pred_y = LR_.predict(X_test)
+#pred_y = 1/(1+np.exp(-(a+b*X_test_std)))
+pred_y = pd.DataFrame(pred_y)
+pred_y=round(pred_y,0).astype(int)
+from sklearn.metrics import roc_curve, auc  ###计算roc和auc
+# Compute ROC curve and ROC area for each class
+fpr,tpr,threshold = roc_curve(y_test, pred_y) ###计算真正率和假正率
+roc_auc = auc(fpr,tpr) ###计算auc的值
+
+pred_y0 = LR_.predict(X_train)
+#pred_y = 1/(1+np.exp(-(a+b*X_test_std)))
+pred_y0 = pd.DataFrame(pred_y0)
+pred_y0=round(pred_y0,0).astype(int)
+from sklearn.metrics import roc_curve, auc  ###计算roc和auc
+# Compute ROC curve and ROC area for each class
+fpr0,tpr0,threshold0 = roc_curve(y_train, pred_y0) ###计算真正率和假正率
+roc_auc0 = auc(fpr0,tpr0) ###计算auc的值
+
+plt.figure()
+lw = 2
+plt.figure(figsize=(10,10))
+plt.plot(fpr0, tpr0, color='r',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc0)
+plt.plot(fpr, tpr, color='g',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc) ###假正率为横坐标，真正率为纵坐标做曲线
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([-0.01, 1.0])
+plt.ylim([0.0, 1.01])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic example')
+plt.legend(loc="lower right")
+plt.show()
+
+#比对原始数据和筛选后数据找出筛选出的特征
+X_data1 = pd.DataFrame(X_data1.values.T, index=X_data1.columns, columns=X_data1.index)
+X_embedded = pd.DataFrame(X_embedded.values.T, index=X_embedded.columns, columns=X_embedded.index)     
+X_data0 = np.array(X_data1)
+X_embedded = np.array(X_embedded)
+X_data0 = X_data0.tolist()
+X_embedded = X_embedded.tolist()
+
+L23=[]
+for j in range(6040):
+    for i in range(17943):
+        if X_embedded[j] == X_data0[i]:
+            L23.append(L2[i])
+            break
+L24 = []
+for m in L3:
+    L24.append(D2[m])    
+
+L5 = ["b'MZB1'","b'IGH1'","b'IGHA1'","b'COL1A1'","b'COL1'","b'CXCL12'","b'CD20'",
+      "b'CD19'","b'CD3'","b'CD4'","b'CD8'"]
+L6 = []
+for n in L5:
+    if n in L24:
+        L6.append(n)
+    else:
+        L6.append('NA')
+print(L6)       
+
+#特征重要性评估
+# get importance
+importance = LR_.coef_[0]
+# summarize feature importance
+D4 = {}
+L7 =[]
+for i,v in enumerate(importance):
+    if v < 0:
+        v = -v
+    D4[v] = i
+    L7.append(v)
+L7.sort(reverse = True)
+L8 =[]
+for k in L7:
+    L8.append(D4[k])
+# plot feature importance
+plt.bar([x for x in range(len(importance))], importance)
+plt.show()
+#找出重要的基因
+L23=[]
+for j in L8:
+    for i in range(17943):
+        if X_embedded[j] == X_data0[i]:
+            L23.append(L2[i])
+            break
+L24 = []
+for m in L23:
+    L24.append(D2[m])  
+#比对
+L_result = set(L4).intersection(set(L14), set(L24))
+from matplotlib_venn import venn3
+from matplotlib_venn import venn3
+venn3(subsets = [set(L4),set(L14),set(L24)],set_labels = ('sample1','sample2','sample3'),set_colors = ('r','b','g'))
+plt.show()
