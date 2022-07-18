@@ -1,0 +1,25 @@
+library(Seurat)
+library(dplyr)
+library(MCPcounter)
+setwd("C:/Users/HUAWEI/Desktop")
+#导入数据
+cdata <- read.csv("X_data1.csv",stringsAsFactors = F)
+#构建一个布尔向量，索引
+index<-duplicated(cdata$X)
+#筛选数据
+cdata<-cdata[!index,]  #选中了非重复的数据
+cdata[1:20,1:3]
+#MCP_counter固定流程
+probesets=read.table(curl("http://raw.githubusercontent.com/ebecht/MCPcounter/master/Signatures/probesets.txt"),sep="\t",stringsAsFactors=FALSE,colClasses="character")
+#genes=read.table(curl("http://raw.githubusercontent.com/ebecht/MCPcounter/master/Signatures/genes.txt"),sep="\t",stringsAsFactors=FALSE,header=TRUE,colClasses="character",check.names=FALSE)
+#require(curl)
+genes=read.table(curl:::curl("http://raw.githubusercontent.com/ebecht/MCPcounter/master/Signatures/genes.txt"),sep="\t",stringsAsFactors=FALSE,header=TRUE,colClasses="character",check.names=FALSE)
+#intersect(rownames(cdata),genes[,"HUGO symbols"])
+#sapply(genes[,"HUGO symbols"],grep,value=TRUE,x=rownames(cdata),simplify=FALSE)
+rownames(cdata) = cdata$X
+cdata <- subset(cdata, select = -X )
+cdata <- SCTransform(cdata, verbose = T)
+results<- MCPcounter.estimate(cdata,featuresType="ENSEMBL_ID",genes = genes, probesets =  probesets)
+results <- as.data.frame(results)
+results[1:5,1:5]
+write.table(data.frame(cell_types=rownames(results),results),"result.csv",row.names=FALSE,col.names=TRUE,sep=",")
